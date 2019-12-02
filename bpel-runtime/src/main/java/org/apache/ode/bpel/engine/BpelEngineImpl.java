@@ -19,6 +19,17 @@
 
 package org.apache.ode.bpel.engine;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.concurrent.TimeUnit;
+import javax.wsdl.Operation;
+import javax.wsdl.PortType;
+import javax.xml.namespace.QName;
+
 import com.hazelcast.core.HazelcastInstance;
 import org.apache.commons.collections.map.MultiKeyMap;
 import org.apache.commons.logging.Log;
@@ -27,11 +38,20 @@ import org.apache.ode.bpel.dao.MessageExchangeDAO;
 import org.apache.ode.bpel.dao.ProcessDAO;
 import org.apache.ode.bpel.dao.ProcessInstanceDAO;
 import org.apache.ode.bpel.evt.BpelEvent;
-import org.apache.ode.bpel.iapi.*;
+import org.apache.ode.bpel.iapi.BpelEngine;
+import org.apache.ode.bpel.iapi.BpelEngineException;
+import org.apache.ode.bpel.iapi.ContextException;
+import org.apache.ode.bpel.iapi.Endpoint;
+import org.apache.ode.bpel.iapi.Message;
+import org.apache.ode.bpel.iapi.MessageExchange;
 import org.apache.ode.bpel.iapi.MessageExchange.FailureType;
 import org.apache.ode.bpel.iapi.MessageExchange.MessageExchangePattern;
 import org.apache.ode.bpel.iapi.MessageExchange.Status;
+import org.apache.ode.bpel.iapi.MyRoleMessageExchange;
 import org.apache.ode.bpel.iapi.MyRoleMessageExchange.CorrelationStatus;
+import org.apache.ode.bpel.iapi.PartnerRoleMessageExchange;
+import org.apache.ode.bpel.iapi.ProcessState;
+import org.apache.ode.bpel.iapi.Scheduler;
 import org.apache.ode.bpel.iapi.Scheduler.JobDetails;
 import org.apache.ode.bpel.iapi.Scheduler.JobType;
 import org.apache.ode.bpel.intercept.InterceptorInvoker;
@@ -47,12 +67,6 @@ import org.apache.ode.utils.Namespaces;
 import org.apache.ode.utils.msg.MessageBundle;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
-
-import javax.wsdl.Operation;
-import javax.wsdl.PortType;
-import javax.xml.namespace.QName;
-import java.util.*;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Implementation of the {@link BpelEngine} interface: provides the server methods that should be invoked in the context of a
@@ -248,10 +262,16 @@ public class BpelEngineImpl implements BpelEngine {
     }
 
     private void setMessageExchangeProcess(String mexId, ProcessDAO processDao) {
+        __log.info("<-----CLOUDPROD-1309-----> setMessageExchangeProcess() method ");
         MessageExchangeDAO mexdao = _contexts.inMemDao.getConnection().getMessageExchange(mexId);
         if (mexdao == null) mexdao = _contexts.dao.getConnection().getMessageExchange(mexId);
-        if (mexdao != null)
+        if (mexdao != null) {
+            __log.info("<-----CLOUDPROD-1309-----> setting process to mexdao: " + processDao);
+            __log.info("<-----CLOUDPROD-1309-----> for mexId: " + mexId);
             mexdao.setProcess(processDao);
+        } else {
+            __log.info("<-----CLOUDPROD-1309-----> mexdao is null: ");
+        }
     }
 
     public MessageExchange getMessageExchange(String mexId) {
@@ -489,6 +509,24 @@ public class BpelEngineImpl implements BpelEngine {
     public void onScheduledJob(Scheduler.JobInfo jobInfo) throws Scheduler.JobProcessorException {
         final JobDetails we = jobInfo.jobDetail;
 
+        // information for the log patch
+        __log.info("<-----CLOUDPROD-1309-----> Printing JobDetails in onScheduledJob() method");
+        __log.info("<-----CLOUDPROD-1309-----> correlatorId: " + we.correlatorId);
+        __log.info("<-----CLOUDPROD-1309-----> mexId: " + we.mexId);
+        __log.info("<-----CLOUDPROD-1309-----> processId: " + we.processId);
+        __log.info("<-----CLOUDPROD-1309-----> type: " + we.type);
+        __log.info("<-----CLOUDPROD-1309-----> inMem: " + we.inMem);
+        __log.info("<-----CLOUDPROD-1309-----> instanceId: " + we.instanceId);
+        __log.info("<-----CLOUDPROD-1309-----> retryCount: " + we.retryCount);
+        __log.info("<-----CLOUDPROD-1309-----> correlationKeySet: " + we.correlationKeySet);
+        __log.info("<-----CLOUDPROD-1309-----> correlationKeySet: " + we.getCorrelationKeySet().toString());
+        __log.info("<-----CLOUDPROD-1309-----> channel: " + we.channel);
+        __log.info("<-----CLOUDPROD-1309-----> printing detailsExt");
+
+        for (Map.Entry<String, Object> entry : we.getDetailsExt().entrySet()) {
+            __log.info("<-----CLOUDPROD-1309----->" + entry.getKey() + ": " + entry.getValue());
+        }
+
         if (__log.isTraceEnabled()) __log.trace("[JOB] onScheduledJob " + jobInfo + "" + we.getInstanceId());
 
         acquireInstanceLock(we.getInstanceId());
@@ -501,13 +539,20 @@ public class BpelEngineImpl implements BpelEngine {
         try {
             if (we.getProcessId() != null) {
                 process = _activeProcesses.get(we.getProcessId());
+                __log.info("<-----CLOUDPROD-1309-----> Initializing a process for process Id: " + we.getProcessId());
             } else {
+                __log.info("<-----CLOUDPROD-1309-----> process id is null");
                 ProcessInstanceDAO instance;
-                if (we.getInMem()) instance = _contexts.inMemDao.getConnection().getInstance(we.getInstanceId());
-                else instance = _contexts.dao.getConnection().getInstance(we.getInstanceId());
+                if (we.getInMem()) {
+                    instance = _contexts.inMemDao.getConnection().getInstance(we.getInstanceId());
+                } else {
+                    instance = _contexts.dao.getConnection().getInstance(we.getInstanceId());
+                }
 
                 if (instance == null) {
                     __log.debug(__msgs.msgScheduledJobReferencesUnknownInstance(we.getInstanceId()));
+                    __log.info("<-----CLOUDPROD-1309-----> instance is null" +
+                                       __msgs.msgScheduledJobReferencesUnknownInstance(we.getInstanceId()));
                     // nothing we can do, this instance is not in the database, it will always fail, not
                     // exactly an error since can occur in normal course of events.
                     return;
@@ -519,6 +564,7 @@ public class BpelEngineImpl implements BpelEngine {
             if (process == null) {
                 // The process is not active, there's nothing we can do with this job
                 __log.debug("Process " + we.getProcessId() + " can't be found, job abandoned.");
+                __log.info("<-----CLOUDPROD-1309-----> Process " + we.getProcessId() + " can't be found, job abandoned.");
                 return;
             }
 
@@ -526,14 +572,19 @@ public class BpelEngineImpl implements BpelEngine {
             try {
                 Thread.currentThread().setContextClassLoader(process._classLoader);
                 if (we.getType().equals(JobType.INVOKE_CHECK)) {
-                    if (__log.isDebugEnabled())
+                    if (__log.isDebugEnabled()) {
                         __log.debug("handleJobDetails: InvokeCheck event for mexid " + we.getMexId());
+                    }
+                    __log.info("<-----CLOUDPROD-1309-----> handleJobDetails: InvokeCheck event for mexid " + we.getMexId());
 
                     sendPartnerRoleFailure(we, MessageExchange.FailureType.COMMUNICATION_ERROR);
                     return;
                 } else if (we.getType().equals(JobType.INVOKE_INTERNAL)) {
-                    if (__log.isDebugEnabled())
+                    if (__log.isDebugEnabled()) {
                         __log.debug("handleJobDetails: InvokeInternal event for mexid " + we.getMexId());
+                    }
+                    __log.info("<-----CLOUDPROD-1309-----> handleJobDetails: InvokeInternal event for mexid " + we.getMexId());
+                    __log.info("<-----CLOUDPROD-1309-----> process as in onScheduledJob() method: " + process);
 
                     setMessageExchangeProcess(we.getMexId(), process.getProcessDAO());
                     MyRoleMessageExchangeImpl mex = (MyRoleMessageExchangeImpl) getMessageExchange(we.getMexId());
