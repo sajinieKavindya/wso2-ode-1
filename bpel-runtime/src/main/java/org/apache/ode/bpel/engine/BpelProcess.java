@@ -18,18 +18,6 @@
  */
 package org.apache.ode.bpel.engine;
 
-import java.io.InputStream;
-import java.net.URI;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.Callable;
-import javax.wsdl.Fault;
-import javax.xml.namespace.QName;
-
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.ode.agents.memory.SizingAgent;
@@ -46,42 +34,29 @@ import org.apache.ode.bpel.explang.ConfigurationException;
 import org.apache.ode.bpel.explang.EvaluationException;
 import org.apache.ode.bpel.extension.ExtensionBundleRuntime;
 import org.apache.ode.bpel.extension.ExtensionCorrelationFilter;
-import org.apache.ode.bpel.iapi.BpelEngineException;
-import org.apache.ode.bpel.iapi.Endpoint;
-import org.apache.ode.bpel.iapi.EndpointReference;
-import org.apache.ode.bpel.iapi.Message;
-import org.apache.ode.bpel.iapi.MessageExchange;
+import org.apache.ode.bpel.iapi.*;
 import org.apache.ode.bpel.iapi.MessageExchange.Status;
-import org.apache.ode.bpel.iapi.PartnerRoleChannel;
-import org.apache.ode.bpel.iapi.PartnerRoleMessageExchange;
-import org.apache.ode.bpel.iapi.ProcessConf;
 import org.apache.ode.bpel.iapi.ProcessConf.CLEANUP_CATEGORY;
 import org.apache.ode.bpel.iapi.Scheduler.JobDetails;
 import org.apache.ode.bpel.iapi.Scheduler.JobType;
 import org.apache.ode.bpel.intercept.InstanceCountThrottler;
 import org.apache.ode.bpel.intercept.InterceptorInvoker;
 import org.apache.ode.bpel.intercept.MessageExchangeInterceptor;
-import org.apache.ode.bpel.o.OElementVarType;
-import org.apache.ode.bpel.o.OExpressionLanguage;
-import org.apache.ode.bpel.o.OMessageVarType;
-import org.apache.ode.bpel.o.OPartnerLink;
-import org.apache.ode.bpel.o.OProcess;
-import org.apache.ode.bpel.o.Serializer;
-import org.apache.ode.bpel.runtime.BpelRuntimeContext;
-import org.apache.ode.bpel.runtime.ExpressionLanguageRuntimeRegistry;
-import org.apache.ode.bpel.runtime.InvalidProcessException;
-import org.apache.ode.bpel.runtime.PROCESS;
-import org.apache.ode.bpel.runtime.PropertyAliasEvaluationContext;
+import org.apache.ode.bpel.o.*;
+import org.apache.ode.bpel.runtime.*;
 import org.apache.ode.bpel.runtime.channels.FaultData;
 import org.apache.ode.jacob.soup.ReplacementMap;
 import org.apache.ode.utils.ObjectPrinter;
 import org.apache.ode.utils.Properties;
 import org.apache.ode.utils.msg.MessageBundle;
-import org.w3c.dom.Attr;
-import org.w3c.dom.Element;
-import org.w3c.dom.Node;
-import org.w3c.dom.NodeList;
-import org.w3c.dom.Text;
+import org.w3c.dom.*;
+
+import javax.wsdl.Fault;
+import javax.xml.namespace.QName;
+import java.io.InputStream;
+import java.net.URI;
+import java.util.*;
+import java.util.concurrent.Callable;
 
 /**
  * Entry point into the runtime of a BPEL process.
@@ -284,37 +259,7 @@ public class BpelProcess {
         return routed;
     }
 
-    private boolean isSameDeployer(PartnerLinkMyRoleImpl.RoutingInfo routing, String deployer) {
-        __log.info("<-----CLOUDPROD-1309-----> isSameDeployer() method");
-        try {
-            __log.info("<-----CLOUDPROD-1309-----> getting Message Route -------------------------->");
-            __log.info("<-----CLOUDPROD-1309-----> MessageRoute: " + routing.messageRoute);
-
-            __log.info("<-----CLOUDPROD-1309-----> getting Target Instance -------------------------->");
-            __log.info("<-----CLOUDPROD-1309-----> TargetInstance: " + routing.messageRoute.getTargetInstance());
-
-            __log.info("<-----CLOUDPROD-1309-----> getting Process -------------------------->");
-            __log.info("<-----CLOUDPROD-1309-----> Process: " + routing.messageRoute.getTargetInstance().getProcess());
-
-            __log.info("<-----CLOUDPROD-1309-----> getting Process Id -------------------------->");
-            __log.info("<-----CLOUDPROD-1309-----> ProcessId: " +
-                               routing.messageRoute.getTargetInstance().getProcess().getProcessId());
-
-            __log.info("<-----CLOUDPROD-1309-----> getting Configuration -------------------------->");
-            __log.info("<-----CLOUDPROD-1309-----> configuration: " + this._engine._activeProcesses
-                    .get(routing.messageRoute.getTargetInstance().getProcess().getProcessId())
-                    .getConf());
-
-            __log.info("<-----CLOUDPROD-1309-----> getting Deployer -------------------------->");
-            __log.info("<-----CLOUDPROD-1309-----> deployer: " + this._engine._activeProcesses.get(
-                    routing.messageRoute.getTargetInstance().getProcess().getProcessId())
-                    .getConf().getDeployer());
-
-        } catch (NullPointerException e) {
-            __log.info("<-----CLOUDPROD-1309-----> getting Error -------------------------->");
-            __log.error("<-----CLOUDPROD-1309----->", e);
-        }
-
+    private boolean isSameDeployer(PartnerLinkMyRoleImpl.RoutingInfo routing, String deployer){
         return this._engine._activeProcesses.get(routing.messageRoute.getTargetInstance().getProcess().getProcessId())
                 .getConf().getDeployer().equals(deployer);
     }
